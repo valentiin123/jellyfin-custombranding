@@ -82,7 +82,7 @@
                 return value.trim();
             }
 
-            export default function (view) {
+            return function (view) {
                 view.addEventListener('viewshow', async function () {
                     Dashboard.showLoadingMsg();
                     try {
@@ -118,7 +118,7 @@
                         Dashboard.hideLoadingMsg();
                     }
                 });
-            }
+            };
         </script>
     </div>
 </body>
