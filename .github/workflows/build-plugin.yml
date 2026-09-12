@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+            fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -31,6 +33,34 @@ jobs:
           cp Jellyfin.Plugin.CustomBranding/bin/Release/net10.0/Jellyfin.Plugin.CustomBranding.dll artifacts/
           (cd artifacts && zip -r CustomBranding.zip .)
           md5sum artifacts/CustomBranding.zip | awk '{print $1}' > artifacts/CustomBranding.zip.md5
+
+      - name: Update manifest.json automatically
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          MD5={GITHUB_REF_NAME#v}
+          URL="https://github.com/{GITHUB_REF_NAME}/CustomBranding.zip"
+          git checkout main
+          python3 -c "
+          import json, datetime
+          with open('manifest.json', 'r') as f:
+          data = json.load(f)
+          new_version = {
+          'version': '$VERSION',
+          'changelog': 'Release automatique $VERSION',
+          'targetAbi': '12.0.0.0',
+          'sourceUrl': '$URL',
+          'checksum': '$MD5',
+          'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+          }
+          data[0]['versions'].insert(0, new_version)
+          with open('manifest.json', 'w') as f:
+          json.dump(data, f, indent=4)
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore: auto-update manifest for ${GITHUB_REF_NAME}"
+          git push origin main
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
