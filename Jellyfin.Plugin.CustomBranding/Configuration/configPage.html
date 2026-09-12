@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <title>Custom Branding</title>
+</head>
+<body>
+    <div data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <h1>Configuration des Logos (Custom Branding)</h1>
+                <p>Modifiez l'apparence de votre serveur. <br/><br/>
+                <b style="color:red;">Important :</b> Nécessite l'installation du plugin <a href="https://github.com/IAmParadox27/jellyfin-plugin-file-transformation" target="_blank" style="color:var(--theme-primary-color);">File Transformation</a> pour injecter les données nativement.</p>
+
+                <form class="customBrandingForm">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtFavicon">Favicon et Apple Touch Icon (URL) :</label>
+                        <input id="txtFavicon" type="text" class="emby-input" placeholder="https://..." />
+                        <div class="fieldDescription">Modifie l'icône de l'onglet, des favoris et de l'écran d'accueil iOS.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtIconTransparent">Logo Transparent (URL) :</label>
+                        <input id="txtIconTransparent" type="text" class="emby-input" placeholder="https://..." />
+                        <div class="fieldDescription">Affiché en haut à gauche et dans le menu latéral. (Recommandé : PNG transparent)</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtBannerLight">Bannière - Thème Clair (URL) :</label>
+                        <input id="txtBannerLight" type="text" class="emby-input" placeholder="https://..." />
+                        <div class="fieldDescription">Affiché sur l'écran de connexion si l'utilisateur a le thème clair.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtBannerDark">Bannière - Thème Sombre (URL) :</label>
+                        <input id="txtBannerDark" type="text" class="emby-input" placeholder="https://..." />
+                        <div class="fieldDescription">Affiché sur l'écran de connexion si l'utilisateur a le thème sombre.</div>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="raised button-submit block emby-button">
+                            <span>Sauvegarder</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var pluginId = 'A1B2C3D4-E5F6-4789-8901-23456789ABCD';
+            export default function (view) {
+                view.addEventListener('viewshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        view.querySelector('#txtFavicon').value = config.Favicon || '';
+                        view.querySelector('#txtIconTransparent').value = config.IconTransparent || '';
+                        view.querySelector('#txtBannerLight').value = config.BannerLight || '';
+                        view.querySelector('#txtBannerDark').value = config.BannerDark || '';
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                view.querySelector('.customBrandingForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.Favicon = view.querySelector('#txtFavicon').value;
+                        config.IconTransparent = view.querySelector('#txtIconTransparent').value;
+                        config.BannerLight = view.querySelector('#txtBannerLight').value;
+                        config.BannerDark = view.querySelector('#txtBannerDark').value;
+
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                            // Notifie l'utilisateur que recharger la page suffit !
+                            Dashboard.alert('Paramètres sauvegardés ! Veuillez actualiser la page complète (F5) pour voir les changements.');
+                        });
+                    });
+                });
+            }
+        </script>
+    </div>
+</body>
+</html>
