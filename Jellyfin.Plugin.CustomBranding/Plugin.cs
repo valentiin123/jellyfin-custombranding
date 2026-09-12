@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.Loader;
-using System.Threading;
+using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -11,14 +10,14 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.CustomBranding
 {
-    // Configuration sauvegardée
     public class PluginConfiguration : BasePluginConfiguration
     {
         public string Favicon { get; set; } = string.Empty;
@@ -27,13 +26,15 @@ namespace Jellyfin.Plugin.CustomBranding
         public string BannerDark { get; set; } = string.Empty;
     }
 
-    // Déclaration du Plugin et IHasWebPages pour l'interface d'administration
     public class CustomBrandingPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
         public static CustomBrandingPlugin? Instance { get; private set; }
-        public override string Name => "Custom Branding (Lightweight)";
+
+        public override string Name => "Custom Branding";
+
         public override Guid Id => Guid.Parse("A1B2C3D4-E5F6-4789-8901-23456789ABCD");
-        public override string Description => "Remplace les logos, bannières et favicons nativement. Repose sur le plugin File Transformation.";
+
+        public override string Description => "Remplace les assets de branding Jellyfin 12 (favicon, logo, bannières).";
 
         public CustomBrandingPlugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
             : base(applicationPaths, xmlSerializer)
@@ -47,67 +48,10 @@ namespace Jellyfin.Plugin.CustomBranding
             {
                 new PluginPageInfo
                 {
-                    Name = this.Name,
+                    Name = Name,
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html"
                 }
             };
-        }
-    }
-
-    // Le contrôleur qui sert le JS dynamique contenant la configuration de l'utilisateur
-    [ApiController]
-    [Route("CustomBranding")]
-    public class CustomBrandingController : ControllerBase
-    {
-        [HttpGet("branding.js")]
-        public ActionResult GetScript()
-        {
-            var config = CustomBrandingPlugin.Instance?.Configuration;
-            if (config == null)
-            {
-                return NotFound();
-            }
-
-            // Génération du JS qui applique les icônes Apple et injecte le CSS
-            var script = $@"
-(function() {{
-    'use strict';
-
-    // 1. Remplacement strict de toutes les balises Favicon et Apple Touch
-    const faviconUrl = '{config.Favicon}';
-    if (faviconUrl) {{
-        const selectors = [
-            'link[rel=""icon""]',
-            'link[rel=""shortcut icon""]',
-            'link[rel=""apple-touch-icon""]',
-            'link[rel=""mask-icon""]'
-        ];
-        selectors.forEach(selector => {{
-            document.querySelectorAll(selector).forEach(el => el.href = faviconUrl);
-        }});
-    }}
-
-    // 2. Injection du CSS natif (Méthode Jellyfin Enhanced)
-    // Cela remplace l'image des balises <img> sans avoir besoin d'écouter les clics (MutationObserver)
-    const css = `
-        /* Logo Transparent (Barre Supérieure & Menu Admin) */
-        {(string.IsNullOrEmpty(config.IconTransparent) ? "" : $@".pageTitleWithLogo {{ background-image: url('{config.IconTransparent}') !important; }}
-        .adminDrawerLogo img {{ content: url('{config.IconTransparent}') !important; }}")}
-
-        /* Bannières Écran de Connexion (Dark / Light) */
-        {(string.IsNullOrEmpty(config.BannerDark) ? "" : $@".theme-dark .splashLogo, .theme-dark .formDialogHeaderLogo, html.theme-dark body .splashLogo {{ content: url('{config.BannerDark}') !important; }}")}
-        {(string.IsNullOrEmpty(config.BannerLight) ? "" : $@".theme-light .splashLogo, .theme-light .formDialogHeaderLogo, html:not(.theme-dark) body:not(.theme-dark) .splashLogo {{ content: url('{config.BannerLight}') !important; }}")}
-    `;
-
-    const style = document.createElement('style');
-    style.id = 'custom-branding-style';
-    style.textContent = css;
-    document.head.appendChild(style);
-}})();";
-
-            // Désactive le cache pour que le changement de logo soit immédiat à la sauvegarde
-            Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-            return Content(script, "application/javascript");
         }
     }
 
@@ -115,71 +59,222 @@ namespace Jellyfin.Plugin.CustomBranding
     {
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
-            serviceCollection.AddHostedService<BrandingInjector>();
+            serviceCollection.AddTransient<IStartupFilter, BrandingAssetStartupFilter>();
         }
     }
 
-    // Le moteur d'injection via le plugin File Transformation
-    public class BrandingInjector : IHostedService
+    public class BrandingAssetStartupFilter : IStartupFilter
     {
-        private readonly ILogger<BrandingInjector> _logger;
-
-        public BrandingInjector(ILogger<BrandingInjector> logger)
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
         {
+            return app =>
+            {
+                app.UseMiddleware<BrandingAssetMiddleware>();
+                next(app);
+            };
+        }
+    }
+
+    public class BrandingAssetMiddleware
+    {
+        private static readonly HttpClient HttpClient = new();
+
+        private readonly RequestDelegate _next;
+        private readonly ILogger<BrandingAssetMiddleware> _logger;
+
+        public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger)
+        {
+            _next = next;
             _logger = logger;
         }
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        public async Task InvokeAsync(HttpContext context)
+        {
+            if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+            {
+                await _next(context);
+                return;
+            }
+
+            if (!TryResolveAssetSource(context.Request.Path.Value, out var source, out var fileName))
+            {
+                await _next(context);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                await _next(context);
+                return;
+            }
+
+            var served = await TryWriteConfiguredAssetAsync(context, source, fileName);
+            if (!served)
+            {
+                await _next(context);
+            }
+        }
+
+        private static bool TryResolveAssetSource(string? requestPath, out string source, out string fileName)
+        {
+            source = string.Empty;
+            fileName = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(requestPath))
+            {
+                return false;
+            }
+
+            fileName = Path.GetFileName(requestPath).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return false;
+            }
+
+            var configuration = CustomBrandingPlugin.Instance?.Configuration;
+            if (configuration == null)
+            {
+                return false;
+            }
+
+            if (fileName.StartsWith("favicon", StringComparison.Ordinal) ||
+                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal))
+            {
+                source = configuration.Favicon ?? string.Empty;
+                return true;
+            }
+
+            if (fileName.StartsWith("icon-transparent", StringComparison.Ordinal))
+            {
+                source = configuration.IconTransparent ?? string.Empty;
+                return true;
+            }
+
+            if (fileName.StartsWith("banner-light", StringComparison.Ordinal))
+            {
+                source = configuration.BannerLight ?? string.Empty;
+                return true;
+            }
+
+            if (fileName.StartsWith("banner-dark", StringComparison.Ordinal))
+            {
+                source = configuration.BannerDark ?? string.Empty;
+                return true;
+            }
+
+            return false;
+        }
+
+        private async Task<bool> TryWriteConfiguredAssetAsync(HttpContext context, string source, string fileName)
         {
             try
             {
-                // Recherche du plugin File Transformation par réflexion
-                var ftAssembly = AssemblyLoadContext.Default.Assemblies
-                    .FirstOrDefault(x => x.FullName?.Contains("Jellyfin.Plugin.FileTransformation") ?? false);
-
-                if (ftAssembly != null)
+                if (source.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ftInterface = ftAssembly.GetType("Jellyfin.Plugin.FileTransformation.PluginInterface");
-                    var jObjectType = ftAssembly.GetType("Newtonsoft.Json.Linq.JObject")
-                                   ?? AssemblyLoadContext.Default.Assemblies
-                                        .FirstOrDefault(x => x.FullName?.Contains("Newtonsoft.Json") ?? false)
-                                        ?.GetType("Newtonsoft.Json.Linq.JObject");
-
-                    if (ftInterface != null && jObjectType != null)
-                    {
-                        // Payload EXACT de Jellyfin Enhanced pour enregistrer la transformation dans index.html
-                        string jsonPayload = $@"{{
-                            ""id"": ""{CustomBrandingPlugin.Instance!.Id}-branding"",
-                            ""name"": ""Custom Branding Injector"",
-                            ""pattern"": ""index.html"",
-                            ""search"": ""</head>"",
-                            ""replacement"": ""<script src=\\""/CustomBranding/branding.js\\"" type=\\""text/javascript\\""></script></head>"",
-                            ""regex"": false
-                        }}";
-
-                        var parseMethod = jObjectType.GetMethod("Parse", new[] { typeof(string) });
-                        var jObjectPayload = parseMethod?.Invoke(null, new object[] { jsonPayload });
-
-                        ftInterface.GetMethod("RegisterTransformation")?.Invoke(null, new object[] { jObjectPayload! });
-                        _logger.LogInformation("Custom Branding : Enregistré avec succès via le plugin File Transformation !");
-                    }
+                    return await TryWriteDataUriAsync(context, source, fileName);
                 }
-                else
+
+                if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 {
-                    _logger.LogWarning("Custom Branding : Le plugin File Transformation est introuvable. Veuillez l'installer.");
+                    return await TryWriteRemoteUrlAsync(context, uri, fileName);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Custom Branding : Erreur lors de l'enregistrement de l'injection.");
+                _logger.LogWarning(ex, "Custom Branding: impossible de servir l'asset {FileName}", fileName);
             }
 
-            return Task.CompletedTask;
+            return false;
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        private static async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
         {
-            return Task.CompletedTask;
+            var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
+            if (commaIndex <= 5)
+            {
+                return false;
+            }
+
+            var metadata = dataUri.Substring(5, commaIndex - 5);
+            var payload = dataUri.Substring(commaIndex + 1);
+            var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
+
+            string contentType;
+            if (isBase64)
+            {
+                contentType = metadata.Substring(0, metadata.Length - ";base64".Length);
+            }
+            else
+            {
+                contentType = metadata;
+            }
+
+            if (string.IsNullOrWhiteSpace(contentType))
+            {
+                contentType = GuessContentType(fileName);
+            }
+
+            byte[] bytes;
+            if (isBase64)
+            {
+                bytes = Convert.FromBase64String(payload);
+            }
+            else
+            {
+                bytes = System.Text.Encoding.UTF8.GetBytes(WebUtility.UrlDecode(payload));
+            }
+
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = contentType;
+            context.Response.ContentLength = bytes.LongLength;
+            if (!HttpMethods.IsHead(context.Request.Method))
+            {
+                await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+            }
+
+            return true;
+        }
+
+        private static async Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
+        {
+            using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var contentType = response.Content.Headers.ContentType?.ToString();
+            if (string.IsNullOrWhiteSpace(contentType))
+            {
+                contentType = GuessContentType(fileName);
+            }
+
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = contentType;
+            context.Response.ContentLength = response.Content.Headers.ContentLength;
+
+            if (!HttpMethods.IsHead(context.Request.Method))
+            {
+                await using var responseStream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
+                await responseStream.CopyToAsync(context.Response.Body, context.RequestAborted);
+            }
+
+            return true;
+        }
+
+        private static string GuessContentType(string fileName)
+        {
+            var extension = Path.GetExtension(fileName).ToLowerInvariant();
+            return extension switch
+            {
+                ".ico" => "image/x-icon",
+                ".svg" => "image/svg+xml",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                _ => "image/png"
+            };
         }
     }
 }
