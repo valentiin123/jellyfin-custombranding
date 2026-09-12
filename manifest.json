@@ -15,6 +15,14 @@
                 "checksum": "7f72da90bfcc3fa92473a79172d5ad76",
                 "timestamp": "2026-09-12T00:00:00Z"
             }
+            {
+                "version": "1.2",
+                "changelog": "Version initiale corrigee ",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/valentiin123/jellyfin-custombranding/releases/download/v1.2/CustomBranding.zip",
+                "checksum": "dd2202550b8293d33593f408367563a7",
+                "timestamp": "2026-09-12T01:00:00Z"
+            }
         ]
     }
 ]
