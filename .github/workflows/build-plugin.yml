@@ -24,7 +24,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restore dependencies
         run: dotnet restore Jellyfin.Plugin.CustomBranding/Jellyfin.Plugin.CustomBranding.csproj
@@ -38,7 +38,7 @@ jobs:
           
           # Séparer le dossier de préparation du dossier final d'artifacts
           mkdir -p build_output artifacts
-          BIN_DIR="Jellyfin.Plugin.CustomBranding/bin/Release/net8.0"
+          BIN_DIR="Jellyfin.Plugin.CustomBranding/bin/Release/net10.0"
           
           if [ -d "$BIN_DIR" ]; then
             cp -r "$BIN_DIR/"* build_output/
