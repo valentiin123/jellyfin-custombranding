@@ -35,17 +35,22 @@ jobs:
       - name: Package plugin
         run: |
           set -euo pipefail
-          mkdir -p artifacts
-          # ensure the build output exists before copying
+          
+          # Séparer le dossier de préparation du dossier final d'artifacts
+          mkdir -p build_output artifacts
           BIN_DIR="Jellyfin.Plugin.CustomBranding/bin/Release/net10.0"
+          
           if [ -d "$BIN_DIR" ]; then
-            cp -r "$BIN_DIR/"* artifacts/ || true
+            cp -r "$BIN_DIR/"* build_output/
           else
-            echo "Warning: build output directory $BIN_DIR not found."
+            echo "Error: build output directory $BIN_DIR not found." >&2
+            exit 1 # Ne pas utiliser '|| true' ici, il vaut mieux que l'action échoue si le build n'existe pas
           fi
-          # create zip (include everything in artifacts)
-          (cd artifacts && zip -r -q CustomBranding.zip .)
-          # write md5 hash (only hash value)
+          
+          # Créer le zip proprement
+          (cd build_output && zip -r -q ../artifacts/CustomBranding.zip .)
+          
+          # Générer le md5
           if [ -f artifacts/CustomBranding.zip ]; then
             md5sum artifacts/CustomBranding.zip | awk '{print $1}' > artifacts/CustomBranding.zip.md5
           else
@@ -58,62 +63,56 @@ jobs:
         run: |
           set -euo pipefail
 
-          # derive tag and version
-          TAG=${GITHUB_REF#refs/tags/}
-          VERSION=${TAG#v}
+          # EXPORT est obligatoire ici pour que le script Python puisse lire les variables d'environnement
+          export TAG=${GITHUB_REF#refs/tags/}
+          export VERSION=${TAG#v}
+          export MD5=$(cat artifacts/CustomBranding.zip.md5 2>/dev/null || echo "")
+          export URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/CustomBranding.zip"
 
-          # read md5 if present
-          MD5=$(cat artifacts/CustomBranding.zip.md5 2>/dev/null || echo "")
+          # Basculer proprement sur la branche main depuis un checkout de tag
+          git fetch origin main
+          git checkout main || git checkout -b main origin/main
+          git pull origin main || true
 
-          # URL where the release asset will be available
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/CustomBranding.zip"
-
-          # ensure we have the latest main
-          git fetch origin main:main
-          git checkout main
-          git pull --ff-only origin main || true
-
-          # update manifest.json using Python and environment variables
+          # Mettre à jour le manifest
           python3 - <<'PY'
-import os, json, datetime, sys
-manifest_path = "manifest.json"
-if not os.path.exists(manifest_path):
-    print(f"manifest.json not found at {manifest_path}", file=sys.stderr)
-    sys.exit(1)
+          import os, json, datetime, sys
+          manifest_path = "manifest.json"
+          if not os.path.exists(manifest_path):
+              print(f"manifest.json not found at {manifest_path}", file=sys.stderr)
+              sys.exit(1)
 
-with open(manifest_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
+          with open(manifest_path, "r", encoding="utf-8") as f:
+              data = json.load(f)
 
-# create new version entry
-version = os.environ.get("VERSION", "")
-tag = os.environ.get("TAG", "")
-md5 = os.environ.get("MD5", "")
-url = os.environ.get("URL", "")
-new_version = {
-    "version": version,
-    "changelog": f"Release automatique {version}",
-    "targetAbi": "12.0.0.0",
-    "sourceUrl": url,
-    "checksum": md5,
-    "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-}
+          # Récupération sécurisée des variables d'environnement
+          version = os.environ.get("VERSION", "")
+          md5 = os.environ.get("MD5", "")
+          url = os.environ.get("URL", "")
 
-# assume manifest is a list and first element has 'versions'
-if isinstance(data, list) and len(data) > 0 and "versions" in data[0]:
-    data[0]["versions"].insert(0, new_version)
-else:
-    # fallback: try to append to top-level 'versions' key
-    if "versions" in data:
-        data["versions"].insert(0, new_version)
-    else:
-        print("manifest.json format not recognized; expected list with [0]['versions'] or top-level 'versions' key", file=sys.stderr)
-        sys.exit(1)
+          new_version = {
+              "version": version,
+              "changelog": f"Release automatique {version}",
+              "targetAbi": "12.0.0.0",
+              "sourceUrl": url,
+              "checksum": md5,
+              "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+          }
 
-with open(manifest_path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=4, ensure_ascii=False)
-PY
+          if isinstance(data, list) and len(data) > 0 and "versions" in data[0]:
+              data[0]["versions"].insert(0, new_version)
+          else:
+              if "versions" in data:
+                  data["versions"].insert(0, new_version)
+              else:
+                  print("manifest.json format not recognized", file=sys.stderr)
+                  sys.exit(1)
 
-          # commit only if changes exist
+          with open(manifest_path, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=4, ensure_ascii=False)
+          PY
+
+          # Commit et push sur main
           if ! git diff --quiet -- manifest.json; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
