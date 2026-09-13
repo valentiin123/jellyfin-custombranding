@@ -270,19 +270,29 @@ namespace Jellyfin.Plugin.CustomBranding
                     return false;
                 }
 
-            var contentType = response.Content.Headers.ContentType?.MediaType;
-            if (string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream")
-            {
-                contentType = GuessContentType(uri.LocalPath);
-                if (contentType == "image/png")
+                var contentType = response.Content.Headers.ContentType?.MediaType;
+                if (string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream")
                 {
-                    contentType = GuessContentType(fileName);
+                    contentType = GuessContentType(uri.LocalPath);
+                    if (contentType == "image/png")
+                    {
+                        contentType = GuessContentType(fileName);
+                    }
                 }
-            }
 
-            if (uri.LocalPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-            {
-                contentType = "image/svg+xml";
+                if (uri.LocalPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                {
+                    contentType = "image/svg+xml";
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync(context.RequestAborted);
+                cachedAsset = new CachedAsset
+                {
+                    ContentType = contentType ?? "application/octet-stream",
+                    Bytes = bytes
+                };
+
+                _memoryCache.Set(cacheKey, cachedAsset, TimeSpan.FromHours(1));
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
