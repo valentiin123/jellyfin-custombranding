@@ -141,9 +141,9 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            if (fileName.StartsWith("favicon", StringComparison.Ordinal) ||
-                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal) ||
-                fileName.StartsWith("touchicon", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("favicon", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("apple-touch-icon", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("touchicon", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.Favicon ?? string.Empty;
                 fileName = fileNameSpan.ToString().ToLowerInvariant();
