@@ -138,7 +138,8 @@ namespace Jellyfin.Plugin.CustomBranding
             }
 
             if (fileName.StartsWith("favicon", StringComparison.Ordinal) ||
-                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal))
+                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal) ||
+                fileName.StartsWith("touchicon", StringComparison.Ordinal))
             {
                 source = configuration.Favicon ?? string.Empty;
                 return true;
@@ -146,7 +147,9 @@ namespace Jellyfin.Plugin.CustomBranding
 
             if (fileName.StartsWith("icon-transparent", StringComparison.Ordinal))
             {
-                source = configuration.IconTransparent ?? string.Empty;
+                source = !string.IsNullOrWhiteSpace(configuration.BannerLight)
+                    ? configuration.BannerLight
+                    : configuration.IconTransparent ?? string.Empty;
                 return true;
             }
 
@@ -216,13 +219,21 @@ namespace Jellyfin.Plugin.CustomBranding
             }
 
             byte[] bytes;
+            string decodedString = string.Empty;
             if (isBase64)
             {
                 bytes = Convert.FromBase64String(payload);
+                try { decodedString = System.Text.Encoding.UTF8.GetString(bytes); } catch {}
             }
             else
             {
-                bytes = System.Text.Encoding.UTF8.GetBytes(WebUtility.UrlDecode(payload));
+                decodedString = Uri.UnescapeDataString(payload);
+                bytes = System.Text.Encoding.UTF8.GetBytes(decodedString);
+            }
+
+            if (decodedString.TrimStart().StartsWith("<svg", StringComparison.OrdinalIgnoreCase) || decodedString.TrimStart().StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+            {
+                contentType = "image/svg+xml";
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
@@ -244,10 +255,19 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            var contentType = response.Content.Headers.ContentType?.ToString();
-            if (string.IsNullOrWhiteSpace(contentType))
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            if (string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream")
             {
-                contentType = GuessContentType(fileName);
+                contentType = GuessContentType(uri.LocalPath);
+                if (contentType == "image/png")
+                {
+                    contentType = GuessContentType(fileName);
+                }
+            }
+
+            if (uri.LocalPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                contentType = "image/svg+xml";
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
