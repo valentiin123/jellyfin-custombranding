@@ -8,6 +8,14 @@
         "category": "UI",
         "versions": [
             {
+                "version": "3.0.0.0",
+                "changelog": "Release automatique 3.0.0.0",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/valentiin123/jellyfin-custombranding/releases/download/v3.0.0.0/CustomBranding.zip",
+                "checksum": "a12f5c58633afb62cb2c7b458f971147",
+                "timestamp": "2026-09-13T19:30:21Z"
+            },
+            {
                 "version": "2.2.2.0",
                 "changelog": "Release automatique 2.2.2.0",
                 "targetAbi": "12.0.0.0",
