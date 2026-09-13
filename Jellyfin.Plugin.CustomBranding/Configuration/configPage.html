@@ -5,13 +5,13 @@
     <title>Custom Branding</title>
 </head>
 <body>
-    <div id="CustomBrandingConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+    <div id="CustomBrandingConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
         <div data-role="content">
             <div class="content-primary">
                 <h1>Configuration des Logos (Custom Branding)</h1>
                 <p>
                     Jellyfin 12 remplace les assets de branding en statique (favicon, icon-transparent, banner-light, banner-dark).<br /><br />
-                    Pour chaque champ : vous pouvez soit coller une URL, soit importer un fichier.
+                    Pour chaque champ : vous pouvez soit coller une URL, soit cliquer pour importer un fichier. L'aperçu sera affiché en direct.
                 </p>
 
                 <style>
@@ -39,58 +39,250 @@
                         opacity: 0.8;
                         margin-bottom: 1em;
                     }
+
+                    /* Image Upload Box Styles */
+                    .image-upload-box {
+                        border: 2px dashed rgba(128, 128, 128, 0.4);
+                        border-radius: 8px;
+                        padding: 2em;
+                        text-align: center;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        position: relative;
+                        min-height: 150px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        background-color: rgba(0, 0, 0, 0.02);
+                        margin-bottom: 1em;
+                    }
+
+                    @media (prefers-color-scheme: dark) {
+                        .image-upload-box {
+                            background-color: rgba(255, 255, 255, 0.02);
+                        }
+                    }
+
+                    .image-upload-box:hover {
+                        border-color: #00a4dc; /* Jellyfin Blue */
+                        background-color: rgba(0, 164, 220, 0.05);
+                    }
+
+                    .image-upload-box img {
+                        max-width: 100%;
+                        max-height: 200px;
+                        display: none;
+                        border-radius: 4px;
+                    }
+
+                    .image-upload-box .placeholder-content {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        pointer-events: none;
+                    }
+
+                    .image-upload-box .placeholder-content svg {
+                        width: 48px;
+                        height: 48px;
+                        fill: currentColor;
+                        opacity: 0.6;
+                        margin-bottom: 10px;
+                    }
+
+                    .image-upload-box.has-image .placeholder-content {
+                        display: none;
+                    }
+
+                    .image-upload-box.has-image img {
+                        display: block;
+                    }
+
+                    .image-upload-box input[type="file"] {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        opacity: 0;
+                        cursor: pointer;
+                    }
+
+                    .url-input-group {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 0.5em;
+                    }
+
+                    .invalid-url {
+                        border-color: #d32f2f !important;
+                    }
+                    .url-error-message {
+                        color: #d32f2f;
+                        font-size: 0.85em;
+                        display: none;
+                        margin-top: 4px;
+                    }
+                    @media (prefers-color-scheme: dark) {
+                        .url-error-message {
+                            color: #ef5350;
+                        }
+                        .invalid-url {
+                            border-color: #ef5350 !important;
+                        }
+                    }
+
+                    .manifest-color-group {
+                        display: flex;
+                        align-items: center;
+                        gap: 1em;
+                        margin-bottom: 1em;
+                    }
+
+                    .manifest-color-group input[type="color"] {
+                        width: 50px;
+                        height: 40px;
+                        padding: 0;
+                        border: 1px solid rgba(128, 128, 128, 0.4);
+                        border-radius: 4px;
+                        cursor: pointer;
+                    }
                 </style>
 
                 <form class="customBrandingForm">
+                    <!-- Images Configuration -->
                     <div class="cb-input-container">
                         <h2>Favicon et Apple Touch Icon</h2>
-                        <div class="cb-field-description">S'affiche dans l'onglet du navigateur et sur les écrans d'accueil mobiles.</div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="txtFavicon">URL distante :</label>
-                            <input id="txtFavicon" type="text" class="emby-input" placeholder="https://..." />
+                        <div class="cb-field-description">S'affiche dans l'onglet du navigateur, sur les écrans d'accueil mobiles, et dans le Manifeste PWA.</div>
+
+                        <div class="image-upload-box" id="boxFavicon">
+                            <div class="placeholder-content">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
+                                <span>Cliquer pour importer une image</span>
+                            </div>
+                            <img id="previewFavicon" alt="Favicon Preview" />
+                            <input id="fileFavicon" type="file" accept=".ico,.png,.svg,.jpg,.jpeg,.webp,.gif" />
                         </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="fileFavicon">Ou importer un fichier :</label>
-                            <input id="fileFavicon" type="file" class="emby-input" accept=".ico,.png,.svg,.jpg,.jpeg,.webp,.gif" />
+
+                        <div class="url-input-group">
+                            <label class="inputLabel inputLabelUnfocused" for="txtFavicon">Ou utiliser une URL distante :</label>
+                            <input id="txtFavicon" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxFavicon" data-target-preview="previewFavicon" />
+                            <div class="url-error-message" id="errorFavicon">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
                         </div>
                     </div>
 
                     <div class="cb-input-container">
                         <h2>Logo Transparent</h2>
                         <div class="cb-field-description">Affiché en haut à gauche et dans le menu latéral.</div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="txtIconTransparent">URL distante :</label>
-                            <input id="txtIconTransparent" type="text" class="emby-input" placeholder="https://..." />
+
+                        <div class="image-upload-box" id="boxIconTransparent">
+                            <div class="placeholder-content">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
+                                <span>Cliquer pour importer une image</span>
+                            </div>
+                            <img id="previewIconTransparent" alt="Icon Transparent Preview" />
+                            <input id="fileIconTransparent" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
                         </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="fileIconTransparent">Ou importer un fichier :</label>
-                            <input id="fileIconTransparent" type="file" class="emby-input" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
+
+                        <div class="url-input-group">
+                            <label class="inputLabel inputLabelUnfocused" for="txtIconTransparent">Ou utiliser une URL distante :</label>
+                            <input id="txtIconTransparent" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxIconTransparent" data-target-preview="previewIconTransparent" />
+                            <div class="url-error-message" id="errorIconTransparent">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
                         </div>
                     </div>
 
                     <div class="cb-input-container">
                         <h2>Bannière - Thème Clair</h2>
                         <div class="cb-field-description">Affiché sur l'écran de connexion en thème clair.</div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="txtBannerLight">URL distante :</label>
-                            <input id="txtBannerLight" type="text" class="emby-input" placeholder="https://..." />
+
+                        <div class="image-upload-box" id="boxBannerLight">
+                            <div class="placeholder-content">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
+                                <span>Cliquer pour importer une image</span>
+                            </div>
+                            <img id="previewBannerLight" alt="Banner Light Preview" />
+                            <input id="fileBannerLight" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
                         </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="fileBannerLight">Ou importer un fichier :</label>
-                            <input id="fileBannerLight" type="file" class="emby-input" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
+
+                        <div class="url-input-group">
+                            <label class="inputLabel inputLabelUnfocused" for="txtBannerLight">Ou utiliser une URL distante :</label>
+                            <input id="txtBannerLight" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxBannerLight" data-target-preview="previewBannerLight" />
+                            <div class="url-error-message" id="errorBannerLight">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
                         </div>
                     </div>
 
                     <div class="cb-input-container">
                         <h2>Bannière - Thème Sombre</h2>
                         <div class="cb-field-description">Affiché sur l'écran de connexion en thème sombre.</div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="txtBannerDark">URL distante :</label>
-                            <input id="txtBannerDark" type="text" class="emby-input" placeholder="https://..." />
+
+                        <div class="image-upload-box" id="boxBannerDark">
+                            <div class="placeholder-content">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
+                                <span>Cliquer pour importer une image</span>
+                            </div>
+                            <img id="previewBannerDark" alt="Banner Dark Preview" />
+                            <input id="fileBannerDark" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
                         </div>
+
+                        <div class="url-input-group">
+                            <label class="inputLabel inputLabelUnfocused" for="txtBannerDark">Ou utiliser une URL distante :</label>
+                            <input id="txtBannerDark" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxBannerDark" data-target-preview="previewBannerDark" />
+                            <div class="url-error-message" id="errorBannerDark">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
+                        </div>
+                    </div>
+
+                    <!-- Web App Manifest Configuration -->
+                    <div class="cb-input-container">
+                        <h2>Paramètres du Manifeste (PWA)</h2>
+                        <div class="cb-field-description">Configurez l'apparence de Jellyfin lorsqu'elle est installée comme application web (PWA).</div>
+
                         <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="fileBannerDark">Ou importer un fichier :</label>
-                            <input id="fileBannerDark" type="file" class="emby-input" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
+                            <label class="inputLabel inputLabelUnfocused" for="txtManifestName">Nom de l'application :</label>
+                            <input id="txtManifestName" type="text" class="emby-input" placeholder="Jellyfin" />
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtManifestShortName">Nom court :</label>
+                            <input id="txtManifestShortName" type="text" class="emby-input" placeholder="Jellyfin" />
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtManifestDescription">Description :</label>
+                            <input id="txtManifestDescription" type="text" class="emby-input" placeholder="The Free Software Media System" />
+                        </div>
+
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="selManifestLang">Langue :</label>
+                            <select class="emby-select-withcolor emby-select" id="selManifestLang">
+                                <option value="en-US">English (US)</option>
+                                <option value="fr-FR">Français (FR)</option>
+                                <option value="es-ES">Español (ES)</option>
+                                <option value="de-DE">Deutsch (DE)</option>
+                                <option value="it-IT">Italiano (IT)</option>
+                            </select>
+                        </div>
+
+                        <div class="manifest-color-group">
+                            <div class="inputContainer" style="margin-bottom: 0;">
+                                <label class="inputLabel inputLabelUnfocused" for="colorManifestTheme">Couleur du thème :</label>
+                                <input id="colorManifestTheme" type="color" value="#101010" />
+                            </div>
+                            <label class="checkboxContainer" style="margin-bottom: 0;">
+                                <input type="checkbox" is="emby-checkbox" id="chkManifestThemeTransparent" />
+                                <span>Transparent</span>
+                            </label>
+                        </div>
+
+                        <div class="manifest-color-group">
+                            <div class="inputContainer" style="margin-bottom: 0;">
+                                <label class="inputLabel inputLabelUnfocused" for="colorManifestBackground">Couleur d'arrière-plan :</label>
+                                <input id="colorManifestBackground" type="color" value="#101010" />
+                            </div>
+                            <label class="checkboxContainer" style="margin-bottom: 0;">
+                                <input type="checkbox" is="emby-checkbox" id="chkManifestBackgroundTransparent" />
+                                <span>Transparent</span>
+                            </label>
                         </div>
                     </div>
 
@@ -120,26 +312,175 @@
                     });
                 }
 
-                async function resolveValue(view, textId, fileId) {
+                function isValidImageUrl(url) {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => resolve(true);
+                        img.onerror = () => resolve(false);
+                        img.src = url;
+                    });
+                }
+
+                // Initialisation UI
+                function setupImageUploadBox(boxId, previewId, fileId, txtId, errorId) {
+                    const box = document.getElementById(boxId);
+                    const preview = document.getElementById(previewId);
+                    const fileInput = document.getElementById(fileId);
+                    const txtInput = document.getElementById(txtId);
+                    const errorMsg = document.getElementById(errorId);
+
+                    // Gérer le changement de fichier local
+                    fileInput.addEventListener('change', async function(e) {
+                        if (this.files && this.files[0]) {
+                            try {
+                                const dataUrl = await fileToDataUrl(this.files[0]);
+                                preview.src = dataUrl;
+                                box.classList.add('has-image');
+                                txtInput.value = ''; // On efface l'URL si on a choisi un fichier
+                                txtInput.classList.remove('invalid-url');
+                                errorMsg.style.display = 'none';
+                            } catch(err) {
+                                console.error(err);
+                            }
+                        }
+                    });
+
+                    // Vérifier en direct l'URL tapée
+                    let typingTimer;
+                    txtInput.addEventListener('input', function() {
+                        clearTimeout(typingTimer);
+                        txtInput.classList.remove('invalid-url');
+                        errorMsg.style.display = 'none';
+
+                        const url = this.value.trim();
+                        if (url) {
+                            typingTimer = setTimeout(async () => {
+                                // On vide le fichier local si l'utilisateur entre une URL
+                                fileInput.value = '';
+
+                                const isValid = await isValidImageUrl(url);
+                                if (isValid) {
+                                    preview.src = url;
+                                    box.classList.add('has-image');
+                                    txtInput.dataset.isValid = "true";
+                                } else {
+                                    box.classList.remove('has-image');
+                                    preview.src = '';
+                                    txtInput.classList.add('invalid-url');
+                                    errorMsg.style.display = 'block';
+                                    txtInput.dataset.isValid = "false";
+                                }
+                            }, 500); // 500ms délai pour éviter de spammer le réseau
+                        } else {
+                            if (!fileInput.files || fileInput.files.length === 0) {
+                                box.classList.remove('has-image');
+                                preview.src = '';
+                            }
+                            txtInput.dataset.isValid = "true"; // Vide est valide (optionnel)
+                        }
+                    });
+                }
+
+                async function resolveValue(view, textId, fileId, boxId) {
                     const fileInput = view.querySelector('#' + fileId);
                     if (fileInput && fileInput.files && fileInput.files.length > 0) {
                         return await fileToDataUrl(fileInput.files[0]);
                     }
 
-                    const value = view.querySelector('#' + textId).value || '';
-                    return value.trim();
+                    // Si pas de nouveau fichier, vérifier si on a une URL ou un data:image existant dans l'aperçu
+                    const txtInput = view.querySelector('#' + textId);
+                    const urlValue = txtInput.value.trim();
+                    if (urlValue) {
+                        // Si une URL a été saisie mais qu'elle est invalide, on ne la sauvegarde pas ou on throw une erreur
+                        if (txtInput.dataset.isValid === "false") {
+                            throw new Error(`L'URL pour ${textId} est invalide.`);
+                        }
+                        return urlValue;
+                    }
+
+                    // Si on n'a ni fichier ni URL, on regarde si on avait déjà un data:image de chargé au préalable
+                    const preview = view.querySelector('#' + textId.replace('txt', 'preview'));
+                    if (preview && preview.src && preview.src.startsWith('data:image/')) {
+                        return preview.src; // Garder l'image sauvegardée existante
+                    }
+
+                    return '';
+                }
+
+                function setInitialImageValue(val, boxId, previewId, txtId) {
+                    const box = document.getElementById(boxId);
+                    const preview = document.getElementById(previewId);
+                    const txtInput = document.getElementById(txtId);
+
+                    if (!val) return;
+
+                    if (val.startsWith('data:image/')) {
+                        // Si c'est une image sauvegardée encodée en base64
+                        preview.src = val;
+                        box.classList.add('has-image');
+                        txtInput.value = ''; // Ne pas afficher le long base64 dans le champ
+                    } else {
+                        // URL distante
+                        preview.src = val;
+                        box.classList.add('has-image');
+                        txtInput.value = val;
+                        txtInput.dataset.isValid = "true";
+                    }
+                }
+
+                // Gérer les champs de couleur transparent
+                function setupTransparentCheckbox(colorId, checkboxId) {
+                    const colorInput = document.getElementById(colorId);
+                    const checkbox = document.getElementById(checkboxId);
+
+                    checkbox.addEventListener('change', function() {
+                        if (this.checked) {
+                            colorInput.disabled = true;
+                            colorInput.style.opacity = '0.5';
+                        } else {
+                            colorInput.disabled = false;
+                            colorInput.style.opacity = '1';
+                        }
+                    });
                 }
 
                 const view = document.querySelector('#CustomBrandingConfigPage');
                 if (view) {
                     view.addEventListener('pageshow', async function () {
+                        setupImageUploadBox('boxFavicon', 'previewFavicon', 'fileFavicon', 'txtFavicon', 'errorFavicon');
+                        setupImageUploadBox('boxIconTransparent', 'previewIconTransparent', 'fileIconTransparent', 'txtIconTransparent', 'errorIconTransparent');
+                        setupImageUploadBox('boxBannerLight', 'previewBannerLight', 'fileBannerLight', 'txtBannerLight', 'errorBannerLight');
+                        setupImageUploadBox('boxBannerDark', 'previewBannerDark', 'fileBannerDark', 'txtBannerDark', 'errorBannerDark');
+
+                        setupTransparentCheckbox('colorManifestTheme', 'chkManifestThemeTransparent');
+                        setupTransparentCheckbox('colorManifestBackground', 'chkManifestBackgroundTransparent');
+
                         Dashboard.showLoadingMsg();
                         try {
                             const config = await ApiClient.getPluginConfiguration(pluginId);
-                            view.querySelector('#txtFavicon').value = config.Favicon || '';
-                            view.querySelector('#txtIconTransparent').value = config.IconTransparent || '';
-                            view.querySelector('#txtBannerLight').value = config.BannerLight || '';
-                            view.querySelector('#txtBannerDark').value = config.BannerDark || '';
+
+                            // Images
+                            setInitialImageValue(config.Favicon, 'boxFavicon', 'previewFavicon', 'txtFavicon');
+                            setInitialImageValue(config.IconTransparent, 'boxIconTransparent', 'previewIconTransparent', 'txtIconTransparent');
+                            setInitialImageValue(config.BannerLight, 'boxBannerLight', 'previewBannerLight', 'txtBannerLight');
+                            setInitialImageValue(config.BannerDark, 'boxBannerDark', 'previewBannerDark', 'txtBannerDark');
+
+                            // Manifest
+                            view.querySelector('#txtManifestName').value = config.ManifestName || 'Jellyfin';
+                            view.querySelector('#txtManifestShortName').value = config.ManifestShortName || 'Jellyfin';
+                            view.querySelector('#txtManifestDescription').value = config.ManifestDescription || 'The Free Software Media System';
+                            view.querySelector('#selManifestLang').value = config.ManifestLang || 'en-US';
+
+                            const themeColor = config.ManifestThemeColor || '#101010';
+                            view.querySelector('#colorManifestTheme').value = themeColor !== 'transparent' ? themeColor : '#101010';
+                            view.querySelector('#chkManifestThemeTransparent').checked = config.ManifestThemeColorTransparent || themeColor === 'transparent';
+                            if(config.ManifestThemeColorTransparent) { view.querySelector('#colorManifestTheme').disabled = true; view.querySelector('#colorManifestTheme').style.opacity = '0.5'; }
+
+                            const bgColor = config.ManifestBackgroundColor || '#101010';
+                            view.querySelector('#colorManifestBackground').value = bgColor !== 'transparent' ? bgColor : '#101010';
+                            view.querySelector('#chkManifestBackgroundTransparent').checked = config.ManifestBackgroundColorTransparent || bgColor === 'transparent';
+                            if(config.ManifestBackgroundColorTransparent) { view.querySelector('#colorManifestBackground').disabled = true; view.querySelector('#colorManifestBackground').style.opacity = '0.5'; }
+
                         } catch (error) {
                             Dashboard.alert('Erreur lors du chargement de la configuration.');
                         } finally {
@@ -149,20 +490,44 @@
 
                     view.querySelector('.customBrandingForm').addEventListener('submit', async function (e) {
                         e.preventDefault();
+
+                        // Vérifier s'il y a des URL invalides
+                        const urlInputs = view.querySelectorAll('.url-input');
+                        for (let i = 0; i < urlInputs.length; i++) {
+                            if (urlInputs[i].dataset.isValid === "false") {
+                                Dashboard.alert('Veuillez corriger les URLs invalides avant de sauvegarder.');
+                                return;
+                            }
+                        }
+
                         Dashboard.showLoadingMsg();
 
                         try {
                             const config = await ApiClient.getPluginConfiguration(pluginId);
+
+                            // Images
                             config.Favicon = await resolveValue(view, 'txtFavicon', 'fileFavicon');
                             config.IconTransparent = await resolveValue(view, 'txtIconTransparent', 'fileIconTransparent');
                             config.BannerLight = await resolveValue(view, 'txtBannerLight', 'fileBannerLight');
                             config.BannerDark = await resolveValue(view, 'txtBannerDark', 'fileBannerDark');
 
+                            // Manifest
+                            config.ManifestName = view.querySelector('#txtManifestName').value.trim() || 'Jellyfin';
+                            config.ManifestShortName = view.querySelector('#txtManifestShortName').value.trim() || 'Jellyfin';
+                            config.ManifestDescription = view.querySelector('#txtManifestDescription').value.trim() || 'The Free Software Media System';
+                            config.ManifestLang = view.querySelector('#selManifestLang').value;
+
+                            config.ManifestThemeColorTransparent = view.querySelector('#chkManifestThemeTransparent').checked;
+                            config.ManifestThemeColor = view.querySelector('#colorManifestTheme').value;
+
+                            config.ManifestBackgroundColorTransparent = view.querySelector('#chkManifestBackgroundTransparent').checked;
+                            config.ManifestBackgroundColor = view.querySelector('#colorManifestBackground').value;
+
                             const result = await ApiClient.updatePluginConfiguration(pluginId, config);
                             Dashboard.processPluginConfigurationUpdateResult(result);
                             Dashboard.alert('Paramètres sauvegardés. Rechargez la page complète (Ctrl+F5) pour appliquer les logos.');
                         } catch (error) {
-                            Dashboard.alert('Erreur pendant la sauvegarde. Vérifiez les URLs/fichiers puis réessayez.');
+                            Dashboard.alert('Erreur pendant la sauvegarde: ' + error.message + '. Vérifiez les URLs/fichiers puis réessayez.');
                         } finally {
                             Dashboard.hideLoadingMsg();
                         }

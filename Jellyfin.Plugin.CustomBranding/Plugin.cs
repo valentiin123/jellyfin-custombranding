@@ -20,6 +20,16 @@ namespace Jellyfin.Plugin.CustomBranding
         public string IconTransparent { get; set; } = string.Empty;
         public string BannerLight { get; set; } = string.Empty;
         public string BannerDark { get; set; } = string.Empty;
+
+        // Web App Manifest Configuration
+        public string ManifestName { get; set; } = "Jellyfin";
+        public string ManifestShortName { get; set; } = "Jellyfin";
+        public string ManifestDescription { get; set; } = "The Free Software Media System";
+        public string ManifestLang { get; set; } = "en-US";
+        public string ManifestThemeColor { get; set; } = "#101010";
+        public bool ManifestThemeColorTransparent { get; set; } = false;
+        public string ManifestBackgroundColor { get; set; } = "#101010";
+        public bool ManifestBackgroundColorTransparent { get; set; } = false;
     }
 
     public class CustomBrandingPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
@@ -100,6 +110,15 @@ namespace Jellyfin.Plugin.CustomBranding
                 return;
             }
 
+            if (context.Request.Path.Value != null &&
+                Path.GetFileName(context.Request.Path.Value.AsSpan()).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+            {
+                if (await TryWriteManifestAsync(context))
+                {
+                    return;
+                }
+            }
+
             if (!TryResolveAssetSource(context.Request.Path.Value, out var source, out var fileName))
             {
                 await _next(context);
@@ -117,6 +136,56 @@ namespace Jellyfin.Plugin.CustomBranding
             {
                 await _next(context);
             }
+        }
+
+        private async Task<bool> TryWriteManifestAsync(HttpContext context)
+        {
+            var config = CustomBrandingPlugin.Instance?.Configuration;
+            if (config == null)
+            {
+                return false;
+            }
+
+            var manifestObj = new
+            {
+                name = config.ManifestName,
+                description = config.ManifestDescription,
+                lang = config.ManifestLang,
+                short_name = config.ManifestShortName,
+                start_url = "index.html#/home",
+                theme_color = config.ManifestThemeColorTransparent ? "transparent" : config.ManifestThemeColor,
+                background_color = config.ManifestBackgroundColorTransparent ? "transparent" : config.ManifestBackgroundColor,
+                display = "standalone",
+                icons = new[]
+                {
+                    new
+                    {
+                        sizes = "512x512",
+                        src = "favicons/touchicon512.png",
+                        type = "image/png"
+                    },
+                    new
+                    {
+                        sizes = "1024x1024",
+                        src = "favicons/touchicon1024.png", // WebApp logic fetches touchicon[SIZE].png so we can map it to our custom icon
+                        type = "image/png"
+                    }
+                }
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(manifestObj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = "application/json";
+            context.Response.ContentLength = bytes.LongLength;
+
+            if (!HttpMethods.IsHead(context.Request.Method))
+            {
+                await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+            }
+
+            return true;
         }
 
         private static bool TryResolveAssetSource(string? requestPath, out string source, out string fileName)
