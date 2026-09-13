@@ -8,6 +8,7 @@ using MediaBrowser.Model.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -76,11 +77,19 @@ namespace Jellyfin.Plugin.CustomBranding
 
         private readonly RequestDelegate _next;
         private readonly ILogger<BrandingAssetMiddleware> _logger;
+        private readonly IMemoryCache _memoryCache;
 
-        public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger)
+        public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger, IMemoryCache memoryCache)
         {
             _next = next;
             _logger = logger;
+            _memoryCache = memoryCache;
+        }
+
+        private class CachedAsset
+        {
+            public string ContentType { get; set; } = string.Empty;
+            public byte[] Bytes { get; set; } = Array.Empty<byte>();
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -231,28 +240,36 @@ namespace Jellyfin.Plugin.CustomBranding
             return true;
         }
 
-        private static async Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
+        private async Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
         {
-            using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
-            if (!response.IsSuccessStatusCode)
+            var cacheKey = $"CustomBranding_RemoteAsset_{uri}";
+            if (!_memoryCache.TryGetValue<CachedAsset>(cacheKey, out var cachedAsset) || cachedAsset == null)
             {
-                return false;
-            }
+                using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return false;
+                }
 
-            var contentType = response.Content.Headers.ContentType?.ToString();
-            if (string.IsNullOrWhiteSpace(contentType))
-            {
-                contentType = GuessContentType(fileName);
+                var contentType = response.Content.Headers.ContentType?.ToString();
+                if (string.IsNullOrWhiteSpace(contentType))
+                {
+                    contentType = GuessContentType(fileName);
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync(context.RequestAborted);
+                cachedAsset = new CachedAsset { ContentType = contentType, Bytes = bytes };
+
+                _memoryCache.Set(cacheKey, cachedAsset, TimeSpan.FromHours(24));
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
-            context.Response.ContentType = contentType;
-            context.Response.ContentLength = response.Content.Headers.ContentLength;
+            context.Response.ContentType = cachedAsset.ContentType;
+            context.Response.ContentLength = cachedAsset.Bytes.LongLength;
 
             if (!HttpMethods.IsHead(context.Request.Method))
             {
-                await using var responseStream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
-                await responseStream.CopyToAsync(context.Response.Body, context.RequestAborted);
+                await context.Response.Body.WriteAsync(cachedAsset.Bytes, context.RequestAborted);
             }
 
             return true;
