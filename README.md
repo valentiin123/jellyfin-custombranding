@@ -10,8 +10,10 @@ Plugin Jellyfin 12 pour remplacer les assets de branding natifs (`favicon`, `app
   - un fichier importé depuis l'interface (stocké en Data URL dans la configuration).
 - Aucune transformation de `index.html` n'est nécessaire.
 
-## Build
+## Installation
+
+Ajouter le repo suivant a jellyfin: 
 
 ```bash
-dotnet build Jellyfin.Plugin.CustomBranding/Jellyfin.Plugin.CustomBranding.csproj -c Release
+https://raw.githubusercontent.com/valentiin123/jellyfin-custombranding/refs/heads/main/manifest.json
 ```
