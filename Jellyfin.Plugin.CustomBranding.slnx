@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Jellyfin.Plugin.CustomBranding.Tests/Jellyfin.Plugin.CustomBranding.Tests.csproj" />
+  <Project Path="Jellyfin.Plugin.CustomBranding/Jellyfin.Plugin.CustomBranding.csproj" />
+</Solution>

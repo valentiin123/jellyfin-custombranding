@@ -263,7 +263,7 @@ namespace Jellyfin.Plugin.CustomBranding
             return true;
         }
 
-        private static string GuessContentType(string fileName)
+        internal static string GuessContentType(string fileName)
         {
             var extension = Path.GetExtension(fileName).ToLowerInvariant();
             return extension switch
