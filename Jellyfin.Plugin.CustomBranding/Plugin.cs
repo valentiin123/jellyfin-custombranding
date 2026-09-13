@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -77,8 +76,6 @@ namespace Jellyfin.Plugin.CustomBranding
 
     public class BrandingAssetMiddleware
     {
-        private static readonly HttpClient HttpClient = new();
-
         private readonly RequestDelegate _next;
         private readonly ILogger<BrandingAssetMiddleware> _logger;
 
@@ -236,31 +233,10 @@ namespace Jellyfin.Plugin.CustomBranding
             return true;
         }
 
-        private static async Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
+        private static Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
         {
-            using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
-            if (!response.IsSuccessStatusCode)
-            {
-                return false;
-            }
-
-            var contentType = response.Content.Headers.ContentType?.ToString();
-            if (string.IsNullOrWhiteSpace(contentType))
-            {
-                contentType = GuessContentType(fileName);
-            }
-
-            context.Response.StatusCode = StatusCodes.Status200OK;
-            context.Response.ContentType = contentType;
-            context.Response.ContentLength = response.Content.Headers.ContentLength;
-
-            if (!HttpMethods.IsHead(context.Request.Method))
-            {
-                await using var responseStream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
-                await responseStream.CopyToAsync(context.Response.Body, context.RequestAborted);
-            }
-
-            return true;
+            context.Response.Redirect(uri.AbsoluteUri);
+            return Task.FromResult(true);
         }
 
         private static string GuessContentType(string fileName)
