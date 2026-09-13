@@ -96,7 +96,8 @@ namespace Jellyfin.Plugin.CustomBranding
                 return;
             }
 
-            if (!TryResolveAssetSource(context.Request.Path.Value, out var source, out var fileName))
+            var configuration = CustomBrandingPlugin.Instance?.Configuration;
+            if (!TryResolveAssetSource(context.Request.Path.Value, configuration, out var source, out var fileName))
             {
                 await _next(context);
                 return;
@@ -115,7 +116,7 @@ namespace Jellyfin.Plugin.CustomBranding
             }
         }
 
-        private static bool TryResolveAssetSource(string? requestPath, out string source, out string fileName)
+        internal static bool TryResolveAssetSource(string? requestPath, PluginConfiguration? configuration, out string source, out string fileName)
         {
             source = string.Empty;
             fileName = string.Empty;
@@ -131,7 +132,6 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            var configuration = CustomBrandingPlugin.Instance?.Configuration;
             if (configuration == null)
             {
                 return false;
