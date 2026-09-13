@@ -125,8 +125,8 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            fileName = Path.GetFileName(requestPath).ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(fileName))
+            var fileNameSpan = Path.GetFileName(requestPath.AsSpan());
+            if (fileNameSpan.IsWhiteSpace())
             {
                 return false;
             }
@@ -137,28 +137,32 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            if (fileName.StartsWith("favicon", StringComparison.Ordinal) ||
-                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("favicon", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("apple-touch-icon", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.Favicon ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("icon-transparent", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("icon-transparent", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.IconTransparent ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("banner-light", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.BannerLight ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("banner-dark", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.BannerDark ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
