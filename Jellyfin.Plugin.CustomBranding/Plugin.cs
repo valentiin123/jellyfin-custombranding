@@ -219,6 +219,11 @@ namespace Jellyfin.Plugin.CustomBranding
                 contentType = GuessContentType(fileName);
             }
 
+            if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             byte[] bytes;
             if (isBase64)
             {
