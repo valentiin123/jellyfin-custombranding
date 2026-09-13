@@ -196,14 +196,14 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            var metadata = dataUri.Substring(5, commaIndex - 5);
-            var payload = dataUri.Substring(commaIndex + 1);
+            var metadata = dataUri[5..commaIndex];
+            var payload = dataUri[(commaIndex + 1)..];
             var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
 
             string contentType;
             if (isBase64)
             {
-                contentType = metadata.Substring(0, metadata.Length - ";base64".Length);
+                contentType = metadata[..^";base64".Length];
             }
             else
             {
