@@ -188,7 +188,7 @@ namespace Jellyfin.Plugin.CustomBranding
             return false;
         }
 
-        private static async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
+        internal static async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
         {
             var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
             if (commaIndex <= 5)

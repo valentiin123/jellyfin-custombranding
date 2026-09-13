@@ -16,4 +16,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.CustomBranding.Tests" />
+  </ItemGroup>
 </Project>
