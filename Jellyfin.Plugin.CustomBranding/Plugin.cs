@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
-using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
@@ -12,6 +8,7 @@ using MediaBrowser.Model.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -78,11 +75,19 @@ namespace Jellyfin.Plugin.CustomBranding
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<BrandingAssetMiddleware> _logger;
+        private readonly IMemoryCache _memoryCache;
 
-        public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger)
+        public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger, IMemoryCache memoryCache)
         {
             _next = next;
             _logger = logger;
+            _memoryCache = memoryCache;
+        }
+
+        private class CachedAsset
+        {
+            public string ContentType { get; set; } = string.Empty;
+            public byte[] Bytes { get; set; } = Array.Empty<byte>();
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -122,8 +127,8 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            fileName = Path.GetFileName(requestPath).ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(fileName))
+            var fileNameSpan = Path.GetFileName(requestPath.AsSpan());
+            if (fileNameSpan.IsWhiteSpace())
             {
                 return false;
             }
@@ -134,28 +139,32 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            if (fileName.StartsWith("favicon", StringComparison.Ordinal) ||
-                fileName.StartsWith("apple-touch-icon", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("favicon", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("apple-touch-icon", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.Favicon ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("icon-transparent", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("icon-transparent", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.IconTransparent ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("banner-light", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.BannerLight ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileName.StartsWith("banner-dark", StringComparison.Ordinal))
+            if (fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
             {
                 source = configuration.BannerDark ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
@@ -193,14 +202,14 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            var metadata = dataUri.Substring(5, commaIndex - 5);
-            var payload = dataUri.Substring(commaIndex + 1);
+            var metadata = dataUri[5..commaIndex];
+            var payload = dataUri[(commaIndex + 1)..];
             var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
 
             string contentType;
             if (isBase64)
             {
-                contentType = metadata.Substring(0, metadata.Length - ";base64".Length);
+                contentType = metadata[..^";base64".Length];
             }
             else
             {
@@ -210,6 +219,11 @@ namespace Jellyfin.Plugin.CustomBranding
             if (string.IsNullOrWhiteSpace(contentType))
             {
                 contentType = GuessContentType(fileName);
+            }
+
+            if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
             }
 
             byte[] bytes;

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Benchmark.AssetResolutionBenchmark-20260913-164925</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.4 LTS (Noble Numbat)
+Intel Xeon Processor 2.30GHz, 1 CPU, 4 logical and 4 physical cores
+.NET SDK 10.0.103
+  [Host]     : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+  DefaultJob : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code></code></pre>
+
+<table>
+<thead><tr><th>Method      </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>Original_NonAsset</td><td>43.63 ns</td><td>0.553 ns</td><td>0.431 ns</td><td>0.0013</td><td>32 B</td>
+</tr><tr><td>Optimized_NonAsset</td><td>14.45 ns</td><td>0.084 ns</td><td>0.066 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Original_Asset</td><td>66.72 ns</td><td>0.471 ns</td><td>0.441 ns</td><td>0.0026</td><td>64 B</td>
+</tr><tr><td>Optimized_Asset</td><td>67.23 ns</td><td>0.376 ns</td><td>0.333 ns</td><td>0.0026</td><td>64 B</td>
+</tr></tbody></table>
+</body>
+</html>
