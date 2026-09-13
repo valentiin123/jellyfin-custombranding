@@ -105,11 +105,11 @@
 
         <script type="text/javascript">
             (function() {
-                var pluginId = 'A1B2C3D4-E5F6-4789-8901-23456789ABCD';
+                const pluginId = 'A1B2C3D4-E5F6-4789-8901-23456789ABCD';
 
                 function fileToDataUrl(file) {
                     return new Promise(function (resolve, reject) {
-                        var reader = new FileReader();
+                        const reader = new FileReader();
                         reader.onload = function () {
                             resolve(reader.result || '');
                         };
@@ -121,21 +121,21 @@
                 }
 
                 async function resolveValue(view, textId, fileId) {
-                    var fileInput = view.querySelector('#' + fileId);
+                    const fileInput = view.querySelector('#' + fileId);
                     if (fileInput && fileInput.files && fileInput.files.length > 0) {
                         return await fileToDataUrl(fileInput.files[0]);
                     }
 
-                    var value = view.querySelector('#' + textId).value || '';
+                    const value = view.querySelector('#' + textId).value || '';
                     return value.trim();
                 }
 
-                var view = document.querySelector('#CustomBrandingConfigPage');
+                const view = document.querySelector('#CustomBrandingConfigPage');
                 if (view) {
                     view.addEventListener('pageshow', async function () {
                         Dashboard.showLoadingMsg();
                         try {
-                            var config = await ApiClient.getPluginConfiguration(pluginId);
+                            const config = await ApiClient.getPluginConfiguration(pluginId);
                             view.querySelector('#txtFavicon').value = config.Favicon || '';
                             view.querySelector('#txtIconTransparent').value = config.IconTransparent || '';
                             view.querySelector('#txtBannerLight').value = config.BannerLight || '';
@@ -152,13 +152,13 @@
                         Dashboard.showLoadingMsg();
 
                         try {
-                            var config = await ApiClient.getPluginConfiguration(pluginId);
+                            const config = await ApiClient.getPluginConfiguration(pluginId);
                             config.Favicon = await resolveValue(view, 'txtFavicon', 'fileFavicon');
                             config.IconTransparent = await resolveValue(view, 'txtIconTransparent', 'fileIconTransparent');
                             config.BannerLight = await resolveValue(view, 'txtBannerLight', 'fileBannerLight');
                             config.BannerDark = await resolveValue(view, 'txtBannerDark', 'fileBannerDark');
 
-                            var result = await ApiClient.updatePluginConfiguration(pluginId, config);
+                            const result = await ApiClient.updatePluginConfiguration(pluginId, config);
                             Dashboard.processPluginConfigurationUpdateResult(result);
                             Dashboard.alert('Paramètres sauvegardés. Rechargez la page complète (Ctrl+F5) pour appliquer les logos.');
                         } catch (error) {
