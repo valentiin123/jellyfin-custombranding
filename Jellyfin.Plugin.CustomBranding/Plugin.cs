@@ -40,6 +40,12 @@ namespace Jellyfin.Plugin.CustomBranding
             : base(applicationPaths, xmlSerializer)
         {
             Instance = this;
+            ConfigurationChanged += OnConfigurationChanged;
+        }
+
+        private void OnConfigurationChanged(object? sender, BasePluginConfiguration e)
+        {
+            BrandingAssetMiddleware.ClearCache();
         }
 
         public IEnumerable<PluginPageInfo> GetPages()
@@ -78,6 +84,12 @@ namespace Jellyfin.Plugin.CustomBranding
     public class BrandingAssetMiddleware
     {
         private static readonly HttpClient HttpClient = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string ContentType, byte[] Bytes)> _dataUriCache = new(StringComparer.Ordinal);
+
+        public static void ClearCache()
+        {
+            _dataUriCache.Clear();
+        }
 
         private readonly RequestDelegate _next;
         private readonly ILogger<BrandingAssetMiddleware> _logger;
@@ -190,47 +202,54 @@ namespace Jellyfin.Plugin.CustomBranding
 
         private static async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
         {
-            var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
-            if (commaIndex <= 5)
+            if (!_dataUriCache.TryGetValue(dataUri, out var cached))
             {
-                return false;
+                var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
+                if (commaIndex <= 5)
+                {
+                    return false;
+                }
+
+                var metadata = dataUri.Substring(5, commaIndex - 5);
+                var payload = dataUri.Substring(commaIndex + 1);
+                var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
+
+                string parsedContentType;
+                if (isBase64)
+                {
+                    parsedContentType = metadata.Substring(0, metadata.Length - ";base64".Length);
+                }
+                else
+                {
+                    parsedContentType = metadata;
+                }
+
+                byte[] bytes;
+                if (isBase64)
+                {
+                    bytes = Convert.FromBase64String(payload);
+                }
+                else
+                {
+                    bytes = System.Text.Encoding.UTF8.GetBytes(WebUtility.UrlDecode(payload));
+                }
+
+                cached = (parsedContentType, bytes);
+                _dataUriCache[dataUri] = cached;
             }
 
-            var metadata = dataUri.Substring(5, commaIndex - 5);
-            var payload = dataUri.Substring(commaIndex + 1);
-            var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
-
-            string contentType;
-            if (isBase64)
-            {
-                contentType = metadata.Substring(0, metadata.Length - ";base64".Length);
-            }
-            else
-            {
-                contentType = metadata;
-            }
-
+            var contentType = cached.ContentType;
             if (string.IsNullOrWhiteSpace(contentType))
             {
                 contentType = GuessContentType(fileName);
             }
 
-            byte[] bytes;
-            if (isBase64)
-            {
-                bytes = Convert.FromBase64String(payload);
-            }
-            else
-            {
-                bytes = System.Text.Encoding.UTF8.GetBytes(WebUtility.UrlDecode(payload));
-            }
-
             context.Response.StatusCode = StatusCodes.Status200OK;
             context.Response.ContentType = contentType;
-            context.Response.ContentLength = bytes.LongLength;
+            context.Response.ContentLength = cached.Bytes.LongLength;
             if (!HttpMethods.IsHead(context.Request.Method))
             {
-                await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+                await context.Response.Body.WriteAsync(cached.Bytes, context.RequestAborted);
             }
 
             return true;
