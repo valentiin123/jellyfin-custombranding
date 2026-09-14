@@ -81,19 +81,61 @@ namespace Jellyfin.Plugin.CustomBranding
         }
     }
 
-    public class BrandingAssetMiddleware
+    public class BrandingAssetMiddleware : IDisposable
     {
-        private static readonly HttpClient HttpClient = new();
+        private static readonly HttpClient HttpClient = new()
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+            MaxResponseContentBufferSize = 10 * 1024 * 1024 // 10 MB Limit
+        };
 
         private readonly RequestDelegate _next;
         private readonly ILogger<BrandingAssetMiddleware> _logger;
         private readonly IMemoryCache _memoryCache;
+        private byte[]? _cachedManifestBytes;
+        private readonly object _manifestCacheLock = new();
+        private bool _disposed;
 
         public BrandingAssetMiddleware(RequestDelegate next, ILogger<BrandingAssetMiddleware> logger, IMemoryCache memoryCache)
         {
             _next = next;
             _logger = logger;
             _memoryCache = memoryCache;
+
+            if (CustomBrandingPlugin.Instance != null)
+            {
+                CustomBrandingPlugin.Instance.ConfigurationChanged += OnConfigurationChanged;
+            }
+        }
+
+        private CancellationTokenSource _cacheCancellationTokenSource = new();
+
+        private void OnConfigurationChanged(object? sender, BasePluginConfiguration e)
+        {
+            lock (_manifestCacheLock)
+            {
+                _cachedManifestBytes = null;
+            }
+
+            var oldCts = Interlocked.Exchange(ref _cacheCancellationTokenSource, new CancellationTokenSource());
+            oldCts.Cancel();
+            oldCts.Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (CustomBrandingPlugin.Instance != null)
+            {
+                CustomBrandingPlugin.Instance.ConfigurationChanged -= OnConfigurationChanged;
+            }
+
+            _disposed = true;
+            GC.SuppressFinalize(this);
         }
 
         private class CachedAsset
@@ -146,43 +188,52 @@ namespace Jellyfin.Plugin.CustomBranding
                 return false;
             }
 
-            var manifestObj = new
+            byte[]? manifestBytes = _cachedManifestBytes;
+            if (manifestBytes == null)
             {
-                name = config.ManifestName,
-                description = config.ManifestDescription,
-                lang = config.ManifestLang,
-                short_name = config.ManifestShortName,
-                start_url = "index.html#/home",
-                theme_color = config.ManifestThemeColorTransparent ? "transparent" : config.ManifestThemeColor,
-                background_color = config.ManifestBackgroundColorTransparent ? "transparent" : config.ManifestBackgroundColor,
-                display = "standalone",
-                icons = new[]
+                var manifestObj = new
                 {
-                    new
+                    name = config.ManifestName,
+                    description = config.ManifestDescription,
+                    lang = config.ManifestLang,
+                    short_name = config.ManifestShortName,
+                    start_url = "index.html#/home",
+                    theme_color = config.ManifestThemeColorTransparent ? "transparent" : config.ManifestThemeColor,
+                    background_color = config.ManifestBackgroundColorTransparent ? "transparent" : config.ManifestBackgroundColor,
+                    display = "standalone",
+                    icons = new[]
                     {
-                        sizes = "512x512",
-                        src = "favicons/touchicon512.png",
-                        type = "image/png"
-                    },
-                    new
-                    {
-                        sizes = "1024x1024",
-                        src = "favicons/touchicon1024.png", // WebApp logic fetches touchicon[SIZE].png so we can map it to our custom icon
-                        type = "image/png"
+                        new
+                        {
+                            sizes = "512x512",
+                            src = "favicons/touchicon512.png",
+                            type = "image/png"
+                        },
+                        new
+                        {
+                            sizes = "1024x1024",
+                            src = "favicons/touchicon1024.png", // WebApp logic fetches touchicon[SIZE].png so we can map it to our custom icon
+                            type = "image/png"
+                        }
                     }
-                }
-            };
+                };
 
-            var json = System.Text.Json.JsonSerializer.Serialize(manifestObj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                var json = System.Text.Json.JsonSerializer.Serialize(manifestObj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                manifestBytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+                lock (_manifestCacheLock)
+                {
+                    _cachedManifestBytes = manifestBytes;
+                }
+            }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
             context.Response.ContentType = "application/json";
-            context.Response.ContentLength = bytes.LongLength;
+            context.Response.ContentLength = manifestBytes.LongLength;
 
             if (!HttpMethods.IsHead(context.Request.Method))
             {
-                await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+                await context.Response.Body.WriteAsync(manifestBytes, context.RequestAborted);
             }
 
             return true;
@@ -221,9 +272,10 @@ namespace Jellyfin.Plugin.CustomBranding
 
             if (fileNameSpan.StartsWith("icon-transparent", StringComparison.OrdinalIgnoreCase))
             {
-                source = !string.IsNullOrWhiteSpace(configuration.BannerLight)
-                    ? configuration.BannerLight
-                    : configuration.IconTransparent ?? string.Empty;
+                source = !string.IsNullOrWhiteSpace(configuration.IconTransparent)
+                    ? configuration.IconTransparent
+                    : configuration.BannerLight ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
@@ -301,21 +353,19 @@ namespace Jellyfin.Plugin.CustomBranding
             }
 
             byte[] bytes;
-            string decodedString = string.Empty;
             if (isBase64)
             {
-                var cleanPayload = payload.Replace("\r", "").Replace("\n", "").Replace(" ", "");
+                var cleanPayload = RemoveWhitespace(payload);
                 bytes = Convert.FromBase64String(cleanPayload);
-                try { decodedString = System.Text.Encoding.UTF8.GetString(bytes); } catch {}
             }
             else
             {
-                var cleanPayload = payload.Replace("\r", "").Replace("\n", "").Replace(" ", "");
-                decodedString = Uri.UnescapeDataString(cleanPayload);
+                var cleanPayload = RemoveWhitespace(payload);
+                var decodedString = Uri.UnescapeDataString(cleanPayload);
                 bytes = System.Text.Encoding.UTF8.GetBytes(decodedString);
             }
 
-            if (decodedString.TrimStart().StartsWith("<svg", StringComparison.OrdinalIgnoreCase) || decodedString.TrimStart().StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+            if (IsSvgBytes(bytes))
             {
                 contentType = "image/svg+xml";
             }
@@ -331,6 +381,56 @@ namespace Jellyfin.Plugin.CustomBranding
             return true;
         }
 
+        private static string RemoveWhitespace(string input)
+        {
+            var len = input.Length;
+            var src = input.AsSpan();
+            var dst = new char[len];
+            var j = 0;
+            for (var i = 0; i < len; i++)
+            {
+                var ch = src[i];
+                if (!char.IsWhiteSpace(ch))
+                {
+                    dst[j++] = ch;
+                }
+            }
+            return new string(dst, 0, j);
+        }
+
+        private static bool IsSvgBytes(ReadOnlySpan<byte> bytes)
+        {
+            // Simple check for SVG by looking for <svg or <?xml after any potential leading whitespace in UTF-8
+            int index = 0;
+            while (index < bytes.Length && (bytes[index] == ' ' || bytes[index] == '\t' || bytes[index] == '\n' || bytes[index] == '\r'))
+            {
+                index++;
+            }
+
+            if (index >= bytes.Length)
+            {
+                return false;
+            }
+
+            var start = bytes.Slice(index);
+
+            // <svg
+            var svgBytes = "<svg"u8;
+            if (start.Length >= svgBytes.Length && start.StartsWith(svgBytes))
+            {
+                return true;
+            }
+
+            // <?xml
+            var xmlBytes = "<?xml"u8;
+            if (start.Length >= xmlBytes.Length && start.StartsWith(xmlBytes))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         private async Task<bool> TryWriteRemoteUrlAsync(HttpContext context, Uri uri, string fileName)
         {
             var cacheKey = $"CustomBranding_RemoteAsset_{uri}";
@@ -339,6 +439,13 @@ namespace Jellyfin.Plugin.CustomBranding
                 using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
                 if (!response.IsSuccessStatusCode)
                 {
+                    return false;
+                }
+
+                var contentLength = response.Content.Headers.ContentLength;
+                if (contentLength > 10 * 1024 * 1024)
+                {
+                    _logger.LogWarning("Custom Branding: L'asset {Uri} est trop volumineux ({Size} octets). Limite fixée à 10MB.", uri, contentLength);
                     return false;
                 }
 
@@ -364,7 +471,10 @@ namespace Jellyfin.Plugin.CustomBranding
                     Bytes = bytes
                 };
 
-                _memoryCache.Set(cacheKey, cachedAsset, TimeSpan.FromHours(1));
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromHours(1))
+                    .AddExpirationToken(new Microsoft.Extensions.Primitives.CancellationChangeToken(_cacheCancellationTokenSource.Token));
+                _memoryCache.Set(cacheKey, cachedAsset, cacheEntryOptions);
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
