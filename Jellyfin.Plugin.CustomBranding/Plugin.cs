@@ -248,12 +248,13 @@ namespace Jellyfin.Plugin.CustomBranding
         {
             try
             {
-                if (source.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                var trimmedSource = source.Trim();
+                if (trimmedSource.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    return await TryWriteDataUriAsync(context, source, fileName);
+                    return await TryWriteDataUriAsync(context, trimmedSource, fileName);
                 }
 
-                if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+                if (Uri.TryCreate(trimmedSource, UriKind.Absolute, out var uri) &&
                     (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 {
                     return await TryWriteRemoteUrlAsync(context, uri, fileName);
@@ -303,12 +304,14 @@ namespace Jellyfin.Plugin.CustomBranding
             string decodedString = string.Empty;
             if (isBase64)
             {
-                bytes = Convert.FromBase64String(payload);
+                var cleanPayload = payload.Replace("\r", "").Replace("\n", "").Replace(" ", "");
+                bytes = Convert.FromBase64String(cleanPayload);
                 try { decodedString = System.Text.Encoding.UTF8.GetString(bytes); } catch {}
             }
             else
             {
-                decodedString = Uri.UnescapeDataString(payload);
+                var cleanPayload = payload.Replace("\r", "").Replace("\n", "").Replace(" ", "");
+                decodedString = Uri.UnescapeDataString(cleanPayload);
                 bytes = System.Text.Encoding.UTF8.GetBytes(decodedString);
             }
 
