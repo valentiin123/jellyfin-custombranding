@@ -320,86 +320,137 @@ namespace Jellyfin.Plugin.CustomBranding
             return false;
         }
 
-        private static async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
+        private async Task<bool> TryWriteDataUriAsync(HttpContext context, string dataUri, string fileName)
         {
-            var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
-            if (commaIndex <= 5)
+            var cacheKey = $"CustomBranding_DataUri_{dataUri.GetHashCode()}";
+            if (!_memoryCache.TryGetValue<CachedAsset>(cacheKey, out var cachedAsset) || cachedAsset == null)
             {
-                return false;
-            }
+                var commaIndex = dataUri.IndexOf(',', StringComparison.Ordinal);
+                if (commaIndex <= 5)
+                {
+                    return false;
+                }
 
-            var metadata = dataUri[5..commaIndex];
-            var payload = dataUri[(commaIndex + 1)..];
-            var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
+                var metadata = dataUri[5..commaIndex];
+                var payload = dataUri[(commaIndex + 1)..];
+                var isBase64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase);
 
-            string contentType;
-            if (isBase64)
-            {
-                contentType = metadata[..^";base64".Length];
-            }
-            else
-            {
-                contentType = metadata;
-            }
+                string contentType;
+                if (isBase64)
+                {
+                    contentType = metadata[..^";base64".Length];
+                }
+                else
+                {
+                    contentType = metadata;
+                }
 
-            if (string.IsNullOrWhiteSpace(contentType))
-            {
-                contentType = GuessContentType(fileName);
-            }
+                if (string.IsNullOrWhiteSpace(contentType))
+                {
+                    contentType = GuessContentType(fileName);
+                }
 
-            if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+                if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
 
-            byte[] bytes;
-            if (isBase64)
-            {
-                var cleanPayload = RemoveWhitespace(payload);
-                bytes = Convert.FromBase64String(cleanPayload);
-            }
-            else
-            {
-                var cleanPayload = RemoveWhitespace(payload);
-                var decodedString = Uri.UnescapeDataString(cleanPayload);
-                bytes = System.Text.Encoding.UTF8.GetBytes(decodedString);
-            }
+                byte[] bytes;
+                if (isBase64)
+                {
+                    var rentedArray = System.Buffers.ArrayPool<char>.Shared.Rent(payload.Length);
+                    try
+                    {
+                        var cleanLength = RemoveWhitespace(payload, rentedArray);
+                        var cleanSpan = rentedArray.AsSpan(0, cleanLength);
 
-            if (IsSvgBytes(bytes))
-            {
-                contentType = "image/svg+xml";
+                        bytes = new byte[(cleanLength * 3) / 4];
+                        if (Convert.TryFromBase64Chars(cleanSpan, bytes, out var bytesWritten))
+                        {
+                            if (bytesWritten != bytes.Length)
+                            {
+                                Array.Resize(ref bytes, bytesWritten);
+                            }
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+                    finally
+                    {
+                        System.Buffers.ArrayPool<char>.Shared.Return(rentedArray);
+                    }
+                }
+                else
+                {
+                    var rentedArray = System.Buffers.ArrayPool<char>.Shared.Rent(payload.Length);
+                    try
+                    {
+                        var cleanLength = RemoveWhitespace(payload, rentedArray);
+                        var cleanSpan = rentedArray.AsSpan(0, cleanLength);
+                        var decodedString = Uri.UnescapeDataString(cleanSpan.ToString());
+                        bytes = System.Text.Encoding.UTF8.GetBytes(decodedString);
+                    }
+                    finally
+                    {
+                        System.Buffers.ArrayPool<char>.Shared.Return(rentedArray);
+                    }
+                }
+
+                if (IsSvgBytes(bytes))
+                {
+                    contentType = "image/svg+xml";
+                }
+
+                cachedAsset = new CachedAsset
+                {
+                    ContentType = contentType,
+                    Bytes = bytes
+                };
+
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromHours(1))
+                    .AddExpirationToken(new Microsoft.Extensions.Primitives.CancellationChangeToken(_cacheCancellationTokenSource.Token));
+
+                _memoryCache.Set(cacheKey, cachedAsset, cacheEntryOptions);
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
-            context.Response.ContentType = contentType;
-            context.Response.ContentLength = bytes.LongLength;
+            context.Response.ContentType = cachedAsset.ContentType;
+            context.Response.ContentLength = cachedAsset.Bytes.LongLength;
             if (!HttpMethods.IsHead(context.Request.Method))
             {
-                await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+                await context.Response.Body.WriteAsync(cachedAsset.Bytes, context.RequestAborted);
             }
 
             return true;
         }
 
-        private static string RemoveWhitespace(string input)
+        private static int RemoveWhitespace(string input, Span<char> output)
         {
             var len = input.Length;
             var src = input.AsSpan();
-            var dst = new char[len];
             var j = 0;
             for (var i = 0; i < len; i++)
             {
                 var ch = src[i];
                 if (!char.IsWhiteSpace(ch))
                 {
-                    dst[j++] = ch;
+                    output[j++] = ch;
                 }
             }
-            return new string(dst, 0, j);
+            return j;
         }
 
         private static bool IsSvgBytes(ReadOnlySpan<byte> bytes)
         {
+            // Handle UTF-8 BOM
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                bytes = bytes.Slice(3);
+            }
+
             // Simple check for SVG by looking for <svg or <?xml after any potential leading whitespace in UTF-8
             int index = 0;
             while (index < bytes.Length && (bytes[index] == ' ' || bytes[index] == '\t' || bytes[index] == '\n' || bytes[index] == '\r'))
@@ -462,6 +513,12 @@ namespace Jellyfin.Plugin.CustomBranding
                 if (uri.LocalPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
                 {
                     contentType = "image/svg+xml";
+                }
+
+                if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Custom Branding: Le contenu de {Uri} n'est pas une image ({ContentType}).", uri, contentType);
+                    return false;
                 }
 
                 var bytes = await response.Content.ReadAsByteArrayAsync(context.RequestAborted);
