@@ -193,42 +193,22 @@
                     </div>
 
                     <div class="cb-input-container">
-                        <h2>Bannière - Thème Clair</h2>
-                        <div class="cb-field-description">Affiché sur l'écran de connexion en thème clair.</div>
+                        <h2>Bannière (Logo complet)</h2>
+                        <div class="cb-field-description">S'affiche sur l'écran de connexion et remplace le texte du menu en haut à gauche sur PC/Tablette.</div>
 
-                        <div class="image-upload-box" id="boxBannerLight">
+                        <div class="image-upload-box" id="boxBanner">
                             <div class="placeholder-content">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
                                 <span>Cliquer pour importer une image</span>
                             </div>
-                            <img id="previewBannerLight" alt="Banner Light Preview" />
-                            <input id="fileBannerLight" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
+                            <img id="previewBanner" alt="Banner Preview" />
+                            <input id="fileBanner" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
                         </div>
 
                         <div class="url-input-group">
-                            <label class="inputLabel inputLabelUnfocused" for="txtBannerLight">Ou utiliser une URL distante :</label>
-                            <input id="txtBannerLight" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxBannerLight" data-target-preview="previewBannerLight" />
-                            <div class="url-error-message" id="errorBannerLight">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
-                        </div>
-                    </div>
-
-                    <div class="cb-input-container">
-                        <h2>Bannière - Thème Sombre</h2>
-                        <div class="cb-field-description">Affiché sur l'écran de connexion en thème sombre.</div>
-
-                        <div class="image-upload-box" id="boxBannerDark">
-                            <div class="placeholder-content">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
-                                <span>Cliquer pour importer une image</span>
-                            </div>
-                            <img id="previewBannerDark" alt="Banner Dark Preview" />
-                            <input id="fileBannerDark" type="file" accept=".png,.svg,.jpg,.jpeg,.webp,.gif" />
-                        </div>
-
-                        <div class="url-input-group">
-                            <label class="inputLabel inputLabelUnfocused" for="txtBannerDark">Ou utiliser une URL distante :</label>
-                            <input id="txtBannerDark" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxBannerDark" data-target-preview="previewBannerDark" />
-                            <div class="url-error-message" id="errorBannerDark">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
+                            <label class="inputLabel inputLabelUnfocused" for="txtBanner">Ou utiliser une URL distante :</label>
+                            <input id="txtBanner" type="text" class="emby-input url-input" placeholder="https://..." data-target-box="boxBanner" data-target-preview="previewBanner" />
+                            <div class="url-error-message" id="errorBanner">L'URL ne pointe pas vers une image valide ou est inaccessible.</div>
                         </div>
                     </div>
 
@@ -449,8 +429,7 @@
                     view.addEventListener('pageshow', async function () {
                         setupImageUploadBox('boxFavicon', 'previewFavicon', 'fileFavicon', 'txtFavicon', 'errorFavicon');
                         setupImageUploadBox('boxIconTransparent', 'previewIconTransparent', 'fileIconTransparent', 'txtIconTransparent', 'errorIconTransparent');
-                        setupImageUploadBox('boxBannerLight', 'previewBannerLight', 'fileBannerLight', 'txtBannerLight', 'errorBannerLight');
-                        setupImageUploadBox('boxBannerDark', 'previewBannerDark', 'fileBannerDark', 'txtBannerDark', 'errorBannerDark');
+                        setupImageUploadBox('boxBanner', 'previewBanner', 'fileBanner', 'txtBanner', 'errorBanner');
 
                         setupTransparentCheckbox('colorManifestTheme', 'chkManifestThemeTransparent');
                         setupTransparentCheckbox('colorManifestBackground', 'chkManifestBackgroundTransparent');
@@ -462,8 +441,7 @@
                             // Images
                             setInitialImageValue(config.Favicon, 'boxFavicon', 'previewFavicon', 'txtFavicon');
                             setInitialImageValue(config.IconTransparent, 'boxIconTransparent', 'previewIconTransparent', 'txtIconTransparent');
-                            setInitialImageValue(config.BannerLight, 'boxBannerLight', 'previewBannerLight', 'txtBannerLight');
-                            setInitialImageValue(config.BannerDark, 'boxBannerDark', 'previewBannerDark', 'txtBannerDark');
+                            setInitialImageValue(config.Banner, 'boxBanner', 'previewBanner', 'txtBanner');
 
                             // Manifest
                             view.querySelector('#txtManifestName').value = config.ManifestName || 'Jellyfin';
@@ -508,8 +486,7 @@
                             // Images
                             config.Favicon = await resolveValue(view, 'txtFavicon', 'fileFavicon');
                             config.IconTransparent = await resolveValue(view, 'txtIconTransparent', 'fileIconTransparent');
-                            config.BannerLight = await resolveValue(view, 'txtBannerLight', 'fileBannerLight');
-                            config.BannerDark = await resolveValue(view, 'txtBannerDark', 'fileBannerDark');
+                            config.Banner = await resolveValue(view, 'txtBanner', 'fileBanner');
 
                             // Manifest
                             config.ManifestName = view.querySelector('#txtManifestName').value.trim() || 'Jellyfin';
