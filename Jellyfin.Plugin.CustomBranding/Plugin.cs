@@ -18,7 +18,8 @@ namespace Jellyfin.Plugin.CustomBranding
     {
         public string Favicon { get; set; } = string.Empty;
         public string IconTransparent { get; set; } = string.Empty;
-        public string Banner { get; set; } = string.Empty;
+        public string BannerLight { get; set; } = string.Empty;
+        public string BannerDark { get; set; } = string.Empty;
 
         // Web App Manifest Configuration
         public string ManifestName { get; set; } = "Jellyfin";
@@ -151,14 +152,8 @@ namespace Jellyfin.Plugin.CustomBranding
                 return;
             }
 
-            var requestPath = context.Request.Path.Value;
-            if (string.IsNullOrEmpty(requestPath))
-            {
-                await _next(context);
-                return;
-            }
-
-            if (Path.GetFileName(requestPath.AsSpan()).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+            if (context.Request.Path.Value != null &&
+                Path.GetFileName(context.Request.Path.Value.AsSpan()).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
             {
                 if (await TryWriteManifestAsync(context))
                 {
@@ -166,13 +161,7 @@ namespace Jellyfin.Plugin.CustomBranding
                 }
             }
 
-            if (requestPath.EndsWith("/index.html", StringComparison.OrdinalIgnoreCase))
-            {
-                await HandleIndexHtmlAsync(context);
-                return;
-            }
-
-            if (!TryResolveAssetSource(requestPath, out var source, out var fileName))
+            if (!TryResolveAssetSource(context.Request.Path.Value, out var source, out var fileName))
             {
                 await _next(context);
                 return;
@@ -188,63 +177,6 @@ namespace Jellyfin.Plugin.CustomBranding
             if (!served)
             {
                 await _next(context);
-            }
-        }
-
-        private async Task HandleIndexHtmlAsync(HttpContext context)
-        {
-            var config = CustomBrandingPlugin.Instance?.Configuration;
-            if (config == null || string.IsNullOrWhiteSpace(config.Banner))
-            {
-                await _next(context);
-                return;
-            }
-
-            var originalBodyStream = context.Response.Body;
-            using var responseBody = new MemoryStream();
-            context.Response.Body = responseBody;
-
-            try
-            {
-                await _next(context);
-
-                var contentType = context.Response.ContentType ?? string.Empty;
-                if (context.Response.StatusCode == 200 && contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
-                {
-                    var cssToInject = @"<style>
-/* Pour la version PC/Tablette (le header) */
-header.MuiAppBar-root .MuiToolbar-root .MuiStack-root .MuiButton-text[href=""#/""] {
-    content: url('custom-branding-banner.png');
-    height: 37px;
-}
-/* Pour l'écran de connexion / splash screen (Legacy & Modern) */
-.splashLogo {
-    background-image: url('custom-branding-banner.png') !important;
-}
-</style>
-</head>";
-
-                    responseBody.Seek(0, SeekOrigin.Begin);
-                    // Use leaveOpen: true so we don't dispose responseBody early
-                    using var reader = new StreamReader(responseBody, leaveOpen: true);
-                    var html = await reader.ReadToEndAsync();
-
-                    html = html.Replace("</head>", cssToInject, StringComparison.OrdinalIgnoreCase);
-
-                    context.Response.ContentLength = System.Text.Encoding.UTF8.GetByteCount(html);
-                    responseBody.SetLength(0);
-
-                    await using var writer = new StreamWriter(responseBody, leaveOpen: true);
-                    await writer.WriteAsync(html);
-                    await writer.FlushAsync();
-                }
-
-                responseBody.Seek(0, SeekOrigin.Begin);
-                await responseBody.CopyToAsync(originalBodyStream);
-            }
-            finally
-            {
-                context.Response.Body = originalBodyStream;
             }
         }
 
@@ -342,16 +274,21 @@ header.MuiAppBar-root .MuiToolbar-root .MuiStack-root .MuiButton-text[href=""#/"
             {
                 source = !string.IsNullOrWhiteSpace(configuration.IconTransparent)
                     ? configuration.IconTransparent
-                    : configuration.Banner ?? string.Empty;
+                    : configuration.BannerLight ?? string.Empty;
                 fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileNameSpan.StartsWith("custom-branding-banner", StringComparison.OrdinalIgnoreCase) ||
-                fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase) ||
-                fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
+            if (fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase))
             {
-                source = configuration.Banner ?? string.Empty;
+                source = configuration.BannerLight ?? string.Empty;
+                fileName = fileNameSpan.ToString().ToLowerInvariant();
+                return true;
+            }
+
+            if (fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
+            {
+                source = configuration.BannerDark ?? string.Empty;
                 fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
