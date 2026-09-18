@@ -17,8 +17,7 @@ namespace Jellyfin.Plugin.CustomBranding.Tests
 
             Assert.Equal(string.Empty, config.Favicon);
             Assert.Equal(string.Empty, config.IconTransparent);
-            Assert.Equal(string.Empty, config.BannerLight);
-            Assert.Equal(string.Empty, config.BannerDark);
+            Assert.Equal(string.Empty, config.Banner);
         }
 
         private Mock<IApplicationPaths> GetApplicationPathsMock()
