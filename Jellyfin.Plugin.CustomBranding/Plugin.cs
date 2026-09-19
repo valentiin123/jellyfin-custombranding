@@ -18,8 +18,7 @@ namespace Jellyfin.Plugin.CustomBranding
     {
         public string Favicon { get; set; } = string.Empty;
         public string IconTransparent { get; set; } = string.Empty;
-        public string BannerLight { get; set; } = string.Empty;
-        public string BannerDark { get; set; } = string.Empty;
+        public string Banner { get; set; } = string.Empty;
 
         // Web App Manifest Configuration
         public string ManifestName { get; set; } = "Jellyfin";
@@ -152,8 +151,14 @@ namespace Jellyfin.Plugin.CustomBranding
                 return;
             }
 
-            if (context.Request.Path.Value != null &&
-                Path.GetFileName(context.Request.Path.Value.AsSpan()).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+            var requestPath = context.Request.Path.Value;
+            if (string.IsNullOrEmpty(requestPath))
+            {
+                await _next(context);
+                return;
+            }
+
+            if (Path.GetFileName(requestPath.AsSpan()).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
             {
                 if (await TryWriteManifestAsync(context))
                 {
@@ -161,7 +166,14 @@ namespace Jellyfin.Plugin.CustomBranding
                 }
             }
 
-            if (!TryResolveAssetSource(context.Request.Path.Value, out var source, out var fileName))
+            if (requestPath.EndsWith(".css", StringComparison.OrdinalIgnoreCase) &&
+                requestPath.StartsWith("/web/", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleCssAsync(context);
+                return;
+            }
+
+            if (!TryResolveAssetSource(requestPath, out var source, out var fileName))
             {
                 await _next(context);
                 return;
@@ -177,6 +189,69 @@ namespace Jellyfin.Plugin.CustomBranding
             if (!served)
             {
                 await _next(context);
+            }
+        }
+
+        private async Task HandleCssAsync(HttpContext context)
+        {
+            var config = CustomBrandingPlugin.Instance?.Configuration;
+            if (config == null || string.IsNullOrWhiteSpace(config.Banner))
+            {
+                await _next(context);
+                return;
+            }
+
+            // Strip caching/compression from request
+            context.Request.Headers.Remove("If-None-Match");
+            context.Request.Headers.Remove("If-Modified-Since");
+            context.Request.Headers.Remove("Accept-Encoding");
+
+            var originalBodyStream = context.Response.Body;
+            using var responseBody = new System.IO.MemoryStream();
+            context.Response.Body = responseBody;
+
+            try
+            {
+                await _next(context);
+
+                var contentType = context.Response.ContentType ?? string.Empty;
+                if (context.Response.StatusCode == 200 && contentType.Contains("text/css", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Strip caching from response
+                    context.Response.Headers.Remove("ETag");
+                    context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+
+                    var cssToInject = @"
+/* Custom Branding CSS */
+header.MuiAppBar-root .MuiToolbar-root .MuiStack-root .MuiButton-text[href=""#/""] {
+    content: url('/web/custom-branding-banner.png') !important;
+    height: 37px !important;
+}
+.splashLogo {
+    background-image: url('/web/custom-branding-banner.png') !important;
+}
+";
+
+                    responseBody.Seek(0, System.IO.SeekOrigin.Begin);
+                    using var reader = new System.IO.StreamReader(responseBody, leaveOpen: true);
+                    var css = await reader.ReadToEndAsync();
+
+                    css += cssToInject;
+
+                    context.Response.ContentLength = System.Text.Encoding.UTF8.GetByteCount(css);
+                    responseBody.SetLength(0);
+
+                    await using var writer = new System.IO.StreamWriter(responseBody, leaveOpen: true);
+                    await writer.WriteAsync(css);
+                    await writer.FlushAsync();
+                }
+
+                responseBody.Seek(0, System.IO.SeekOrigin.Begin);
+                await responseBody.CopyToAsync(originalBodyStream);
+            }
+            finally
+            {
+                context.Response.Body = originalBodyStream;
             }
         }
 
@@ -274,21 +349,16 @@ namespace Jellyfin.Plugin.CustomBranding
             {
                 source = !string.IsNullOrWhiteSpace(configuration.IconTransparent)
                     ? configuration.IconTransparent
-                    : configuration.BannerLight ?? string.Empty;
+                    : configuration.Banner ?? string.Empty;
                 fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
 
-            if (fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase))
+            if (fileNameSpan.StartsWith("custom-branding-banner", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("banner-light", StringComparison.OrdinalIgnoreCase) ||
+                fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
             {
-                source = configuration.BannerLight ?? string.Empty;
-                fileName = fileNameSpan.ToString().ToLowerInvariant();
-                return true;
-            }
-
-            if (fileNameSpan.StartsWith("banner-dark", StringComparison.OrdinalIgnoreCase))
-            {
-                source = configuration.BannerDark ?? string.Empty;
+                source = configuration.Banner ?? string.Empty;
                 fileName = fileNameSpan.ToString().ToLowerInvariant();
                 return true;
             }
